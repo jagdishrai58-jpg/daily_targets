@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true)
+  const [fullName, setFullName] = useState('') // NEW: State to hold the user's name
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -28,7 +29,16 @@ export default function AuthPage() {
         router.push('/todo')
       }
     } else {
-      const { error } = await supabase.auth.signUp({ email, password })
+      // NEW: Pass the full name into Supabase's user metadata
+      const { error } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+          data: {
+            full_name: fullName 
+          }
+        }
+      })
       if (error) {
         setError(error.message)
         setLoading(false)
@@ -112,6 +122,24 @@ export default function AuthPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
+            
+            {/* NEW: Full Name field only shows during sign up */}
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all duration-200"
+                  placeholder="e.g. Jagdish Rai"
+                  required={!isLogin}
+                />
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">
                 Email Address

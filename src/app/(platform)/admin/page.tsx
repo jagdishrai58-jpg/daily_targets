@@ -84,10 +84,14 @@ type BulkQuestion = {
   correct_option: number
 }
 
+// FIXED: Lock local date formatting strictly to Indian Standard Time
 const formatDateToLocal = (date: Date) => {
-  const offset = date.getTimezoneOffset()
-  const localDate = new Date(date.getTime() - offset * 60 * 1000)
-  return localDate.toISOString().split('T')[0]
+  const istString = date.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })
+  const istDate = new Date(istString)
+  const year = istDate.getFullYear()
+  const month = String(istDate.getMonth() + 1).padStart(2, '0')
+  const day = String(istDate.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 const formatDate = (value?: string | null) => {
@@ -128,7 +132,13 @@ export default function AdminPage() {
   const [activeTasks, setActiveTasks] = useState<DailyTask[]>([])
   
   const [taskDate, setTaskDate] = useState(formatDateToLocal(new Date()))
-  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+  
+  // FIXED: Initialize calendar month locked to IST to prevent UI glitches
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    const istString = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })
+    const istDate = new Date(istString)
+    return new Date(istDate.getFullYear(), istDate.getMonth(), 1)
+  })
   
   const [taskList, setTaskList] = useState<TaskDraft[]>([{ name: '', unit: 'slots' }])
 
@@ -371,18 +381,15 @@ export default function AdminPage() {
     loadStudentData(selectedStudent)
   }
 
-  // --- NEW ACCESS SWITCH LOGIC ---
   const toggleUserAccess = async (e: React.MouseEvent, userId: string, currentStatus: boolean | null | undefined) => {
-    e.stopPropagation() // Prevents opening the student panel when clicking the switch
+    e.stopPropagation() 
     const newStatus = !currentStatus
     
-    // Optimistic UI update for instant feedback
     setProfiles(prev => prev.map(p => p.id === userId ? { ...p, is_active: newStatus } : p))
     
     const { error } = await supabase.from('profiles').update({ is_active: newStatus }).eq('id', userId)
     if (error) {
       setMessage(`Failed to update access: ${error.message}`)
-      // Revert if database fails
       setProfiles(prev => prev.map(p => p.id === userId ? { ...p, is_active: currentStatus } : p))
     } else {
       setMessage(`User access ${newStatus ? 'GRANTED' : 'REVOKED'}.`)
@@ -608,7 +615,7 @@ export default function AdminPage() {
                     <th className="px-5 py-3">Student</th>
                     <th className="px-5 py-3">User ID</th>
                     <th className="px-5 py-3">Joined</th>
-                    <th className="px-5 py-3">To-Do</th>
+                    <th className="px-5 py-3">All-Time To-Do</th>
                     <th className="px-5 py-3">Mocks</th>
                     <th className="px-5 py-3">Quizzes</th>
                     <th className="px-5 py-3">Access</th>
@@ -618,7 +625,10 @@ export default function AdminPage() {
                 <tbody className="divide-y divide-slate-100">
                   {profiles.map(profile => {
                     const stats = userStats[profile.id] || { progressRows: 0, completedRows: 0, mocks: 0, quizResults: 0 }
-                    const completionPct = stats.progressRows ? Math.round((stats.completedRows / stats.progressRows) * 100) : 0
+                    
+                    // FIXED: Calculate against all globally assigned tasks
+                    const totalTasksAssigned = activeTasks.length
+                    const completionPct = totalTasksAssigned ? Math.round((stats.completedRows / totalTasksAssigned) * 100) : 0
 
                     return (
                       <tr
@@ -961,10 +971,10 @@ export default function AdminPage() {
                       <div className="flex items-start justify-between gap-3">
                         <button onClick={() => setQuizId(quiz.id)} className="min-w-0 flex-1 text-left">
                           <p className="truncate text-sm font-black text-slate-900">{quiz.title}</p>
-                          <div className="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase text-slate-500">
+                          <p className="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase text-slate-500">
                             <span className="rounded bg-white px-1.5 py-0.5">{quiz.quiz_type}</span>
                             <span>{formatDate(quiz.publish_date)}</span>
-                          </div>
+                          </p>
                         </button>
                         <button onClick={() => handleDeleteQuiz(quiz.id)} className="rounded-md bg-red-50 px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-100">Delete</button>
                       </div>
