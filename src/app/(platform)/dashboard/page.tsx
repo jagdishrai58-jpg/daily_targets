@@ -299,12 +299,19 @@ export default function DashboardPage() {
         {/* Quick Launch Panel */}
         <div>
           <h3 className="font-bold text-slate-800 mb-4 px-1">Quick Launch</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            
             <Link href="/daily-ca" className="bg-white p-4 rounded-2xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition text-center group">
               <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">📅</div>
               <p className="font-bold text-slate-700 text-sm">Daily CA</p>
             </Link>
             
+            {/* Added Daily RC Link here */}
+            <Link href="/editorial" className="bg-white p-4 rounded-2xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition text-center group">
+              <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">📰</div>
+              <p className="font-bold text-slate-700 text-sm">Daily RC</p>
+            </Link>
+
             <Link href="/weekly-ca" className="bg-white p-4 rounded-2xl border border-slate-200 hover:border-purple-400 hover:shadow-md transition text-center group">
               <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">🗓️</div>
               <p className="font-bold text-slate-700 text-sm">Weekly Sets</p>
@@ -319,6 +326,7 @@ export default function DashboardPage() {
               <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">📈</div>
               <p className="font-bold text-slate-700 text-sm">Quiz Scores</p>
             </Link>
+
           </div>
         </div>
 

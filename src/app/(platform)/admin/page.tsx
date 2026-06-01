@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
-type AdminTab = 'users' | 'monitor' | 'tasks' | 'quizzes'
+type AdminTab = 'users' | 'monitor' | 'tasks' | 'quizzes' | 'rc'
 
 type Profile = {
   id: string
@@ -84,7 +84,13 @@ type BulkQuestion = {
   correct_option: number
 }
 
-// FIXED: Lock local date formatting strictly to Indian Standard Time
+// NEW: Type for listing RCs in the Library
+type EditorialMeta = {
+  id: string
+  title: string
+  publish_date: string
+}
+
 const formatDateToLocal = (date: Date) => {
   const istString = date.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })
   const istDate = new Date(istString)
@@ -133,7 +139,6 @@ export default function AdminPage() {
   
   const [taskDate, setTaskDate] = useState(formatDateToLocal(new Date()))
   
-  // FIXED: Initialize calendar month locked to IST to prevent UI glitches
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
     const istString = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })
     const istDate = new Date(istString)
@@ -157,6 +162,16 @@ export default function AdminPage() {
   const [optD, setOptD] = useState('')
   const [optE, setOptE] = useState('')
   const [correctIdx, setCorrectIdx] = useState('0')
+
+  // RC Manager State
+  const [rcDate, setRcDate] = useState(formatDateToLocal(new Date()))
+  const [rcTitle, setRcTitle] = useState('')
+  const [rcJson, setRcJson] = useState('')
+  const [rcStatus, setRcStatus] = useState<{ type: 'success' | 'error' | '', msg: string }>({ type: '', msg: '' })
+  
+  // NEW: RC Library State
+  const [allEditorials, setAllEditorials] = useState<EditorialMeta[]>([])
+  const [loadingEditorials, setLoadingEditorials] = useState(true)
 
   const fetchInitialData = useCallback(async () => {
     setLoading(true)
@@ -245,14 +260,33 @@ export default function AdminPage() {
     }
   }, [])
 
+  // NEW: Fetch Editorials for Library
+  const fetchEditorialsList = useCallback(async () => {
+    setLoadingEditorials(true)
+    try {
+      const { data, error } = await supabase
+        .from('editorials')
+        .select('id, title, publish_date')
+        .order('publish_date', { ascending: false })
+
+      if (error) throw error
+      setAllEditorials(data || [])
+    } catch (err) {
+      setMessage(`Failed to load RCs: ${getErrorMessage(err)}`)
+    } finally {
+      setLoadingEditorials(false)
+    }
+  }, [])
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       fetchInitialData()
       fetchQuizzes()
+      fetchEditorialsList() // Fetch RCs on load
     }, 0)
 
     return () => window.clearTimeout(timeoutId)
-  }, [fetchInitialData, fetchQuizzes])
+  }, [fetchInitialData, fetchQuizzes, fetchEditorialsList])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -510,6 +544,26 @@ export default function AdminPage() {
     }
   }
 
+  // NEW: Handle Delete RC
+  const handleDeleteRC = async (id: string) => {
+    if (!confirm('Delete this Reading Comprehension passage? This will also delete any student scores associated with it.')) return
+
+    try {
+      // Due to our 'on delete cascade' setup, deleting the editorial automatically deletes the editorial_results!
+      const { error } = await supabase
+        .from('editorials')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      setMessage('Reading Comprehension deleted.')
+      fetchEditorialsList()
+    } catch (err) {
+      setMessage(`RC deletion failed: ${getErrorMessage(err)}`)
+    }
+  }
+
   const handleBulkUpload = async () => {
     if (!quizId) {
       setMessage('Create or select a quiz first.')
@@ -565,6 +619,49 @@ export default function AdminPage() {
     fetchQuizzes()
   }
 
+  const handleUploadRC = async () => {
+    try {
+      setRcStatus({ type: '', msg: 'Uploading...' })
+      
+      if (!rcDate || !rcTitle || !rcJson) {
+        throw new Error('Please fill in the Date, Title, and JSON fields.')
+      }
+
+      let parsedContent;
+      try {
+        parsedContent = JSON.parse(rcJson)
+      } catch (e) {
+        throw new Error('Invalid JSON format. Please check for missing quotes or brackets.')
+      }
+
+      if (!parsedContent.passage || !parsedContent.questions) {
+        throw new Error('JSON is missing the "passage" or "questions" arrays.')
+      }
+
+      const { error } = await supabase
+        .from('editorials')
+        .insert({
+          publish_date: rcDate,
+          title: rcTitle,
+          content: parsedContent
+        })
+
+      if (error) throw error
+
+      setRcStatus({ type: 'success', msg: 'Reading Comprehension successfully uploaded!' })
+      
+      setRcDate(formatDateToLocal(new Date()))
+      setRcTitle('')
+      setRcJson('')
+      
+      // Fetch updated list so it appears in the Library panel instantly!
+      fetchEditorialsList()
+      
+    } catch (err: any) {
+      setRcStatus({ type: 'error', msg: err.message })
+    }
+  }
+
   return (
     <div className="max-w-7xl mx-auto p-4 py-8">
       <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-center lg:justify-between">
@@ -579,6 +676,7 @@ export default function AdminPage() {
             ['monitor', 'To-Do Monitor'],
             ['tasks', 'Manage To-Dos'],
             ['quizzes', 'Quiz Manager'],
+            ['rc', 'RC Manager'],
           ].map(([tab, label]) => (
             <button
               key={tab}
@@ -626,7 +724,6 @@ export default function AdminPage() {
                   {profiles.map(profile => {
                     const stats = userStats[profile.id] || { progressRows: 0, completedRows: 0, mocks: 0, quizResults: 0 }
                     
-                    // FIXED: Calculate against all globally assigned tasks
                     const totalTasksAssigned = activeTasks.length
                     const completionPct = totalTasksAssigned ? Math.round((stats.completedRows / totalTasksAssigned) * 100) : 0
 
@@ -998,6 +1095,109 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* NEW: RC Manager updated with Library Panel */}
+      {activeTab === 'rc' && (
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+          
+          {/* LEFT: Upload Form */}
+          <div className="space-y-6 lg:col-span-2">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 lg:p-8">
+              <h2 className="text-xl font-bold text-slate-900 mb-6">Upload Reading Comprehension</h2>
+              
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Publish Date</label>
+                    <input 
+                      type="date" 
+                      value={rcDate}
+                      onChange={(e) => setRcDate(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Editorial Title</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g., Language Decorum..."
+                      value={rcTitle}
+                      onChange={(e) => setRcTitle(e.target.value)}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 flex justify-between">
+                    <span>Passage & Questions (JSON Format)</span>
+                    <span className="text-xs font-normal text-slate-400">Must include "passage" and "questions"</span>
+                  </label>
+                  <textarea 
+                    value={rcJson}
+                    onChange={(e) => setRcJson(e.target.value)}
+                    placeholder='{&#10;  "passage": ["Paragraph 1", "Paragraph 2"],&#10;  "questions": [ { "id": 1, "text": "...", "options": [...], "correctAnswerIndex": 0, "explanation": "..." } ]&#10;}'
+                    className="w-full h-96 p-4 bg-slate-900 text-green-400 font-mono text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    spellCheck="false"
+                  />
+                </div>
+
+                {rcStatus.msg && (
+                  <div className={`p-4 rounded-lg text-sm font-bold ${
+                    rcStatus.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' :
+                    rcStatus.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                    'bg-blue-50 text-blue-600 border border-blue-200'
+                  }`}>
+                    {rcStatus.msg}
+                  </div>
+                )}
+
+                <button 
+                  onClick={handleUploadRC}
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-lg transition-colors shadow-sm"
+                >
+                  Upload Editorial RC
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: RC Library Panel */}
+          <div className="max-h-[820px] overflow-hidden rounded-lg border border-slate-200 bg-white p-5 shadow-sm flex flex-col">
+            <div className="mb-4 border-b border-slate-100 pb-3 shrink-0">
+              <h2 className="text-lg font-black text-slate-900">RC Library</h2>
+            </div>
+
+            {loadingEditorials ? (
+              <div className="py-10 text-center text-sm text-slate-400 font-bold">Loading Library...</div>
+            ) : allEditorials.length === 0 ? (
+              <div className="py-10 text-center text-sm text-slate-400">No RCs uploaded yet.</div>
+            ) : (
+              <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+                {allEditorials.map(ed => (
+                  <div key={ed.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4 flex flex-col justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900 line-clamp-2 leading-snug">{ed.title}</p>
+                      <p className="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase text-slate-500">
+                        <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5">{formatDate(ed.publish_date)}</span>
+                      </p>
+                    </div>
+                    <div className="flex justify-end pt-2 border-t border-slate-200 mt-1">
+                      <button 
+                        onClick={() => handleDeleteRC(ed.id)} 
+                        className="rounded-md bg-white border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors shadow-sm"
+                      >
+                        Delete RC
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
       )}
     </div>

@@ -30,6 +30,7 @@ export default function Sidebar() {
     { name: 'Dashboard', path: '/dashboard', icon: '📊', show: true },
     { name: 'Today\'s To-Do', path: '/todo', icon: '📝', show: true },
     { name: 'Mock Tracker', path: '/mocks', icon: '🎯', show: true },
+    { name: 'Daily Editorial', path: '/editorial', icon: '📰', show: true },
     { name: 'Daily CA', path: '/daily-ca', icon: '📅', show: true },
     { name: 'Weekly CA', path: '/weekly-ca', icon: '🗓️', show: true },
     { name: 'Computer Quizzes', path: '/computer', icon: '💻', show: true },
@@ -38,7 +39,10 @@ export default function Sidebar() {
     { name: 'Admin Panel', path: '/admin', icon: '⚙️', show: isAdmin },
   ]
 
-  if (pathname.startsWith('/quiz/')) return null
+  // Hide sidebar during actual quizzes and RC passages, but keep it on the launcher menus
+  if (pathname.startsWith('/quiz/') || (pathname.startsWith('/editorial/') && pathname !== '/editorial')) {
+    return null
+  }
 
   return (
     // FIXED: Removed 'hidden md:flex' so the layout wrapper can control visibility
