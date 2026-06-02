@@ -9,13 +9,28 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  
+  // NEW: State to track their true database role
+  const [userRole, setUserRole] = useState<string | null>(null)
 
   useEffect(() => {
-    const getUser = async () => {
+    const getUserData = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) setUserEmail(user.email ?? null)
+      
+      if (user) {
+        setUserEmail(user.email ?? null)
+        
+        // Fetch their actual role from the profiles table
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+          
+        if (profile) setUserRole(profile.role)
+      }
     }
-    getUser()
+    getUserData()
   }, [])
 
   const handleSignOut = async () => {
@@ -23,8 +38,8 @@ export default function Sidebar() {
     router.push('/')
   }
 
-  // Change this to YOUR actual admin email!
-  const isAdmin = userEmail === 'jagdishrai58@gmail.com'
+  // Updated check: Now looks at the database role!
+  const isAdmin = userRole === 'admin'
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: '📊', show: true },
@@ -45,8 +60,6 @@ export default function Sidebar() {
   }
 
   return (
-    // FIXED: Removed 'hidden md:flex' so the layout wrapper can control visibility
-    // Changed 'min-h-screen' to 'h-full' for better mobile drawer fit
     <div className="w-64 bg-slate-900 h-full text-slate-300 flex flex-col">
       <div className="p-6 border-b border-slate-800">
         <h1 className="text-xl font-bold text-white tracking-wider">CA MASTER</h1>
