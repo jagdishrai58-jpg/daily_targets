@@ -12,72 +12,86 @@ export default function PlatformLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [isAuthorized, setIsAuthorized] = useState(false)
   
-  // NEW: State to track if the mobile menu is open or closed
+  // Start as null so we know when it's actively checking vs denied
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false) 
 
   useEffect(() => {
+    let isMounted = true
+
     const checkAccess = async () => {
-      // 1. Check if they are logged in at all
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
-        router.replace('/login')
-        return
+      try {
+        // 1. Get session (using getSession is faster but can be stale, getUser forces a network check)
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        
+        if (authError || !user) {
+          if (isMounted) router.replace('/login')
+          return
+        }
+
+        // 2. Force a fresh fetch of the profile directly from the DB, bypassing cache
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role, is_active')
+          .eq('id', user.id)
+          .single()
+
+        if (profileError || !profile) {
+          if (isMounted) router.replace('/login')
+          return
+        }
+
+        // 3. Security Rules Execution
+        if (pathname.startsWith('/admin') && profile.role !== 'admin') {
+          console.log("Access Denied: You do not have admin privileges.")
+          if (isMounted) router.replace('/dashboard') // Kicks them to dashboard
+          return
+        }
+
+        if (profile.role !== 'admin' && profile.is_active === false) {
+          console.log("Access Denied: Account is not active.")
+          if (isMounted) router.replace('/pending')
+          return
+        }
+
+        // 4. Success! Unlock the doors.
+        if (isMounted) setIsAuthorized(true)
+
+      } catch (err) {
+        console.error("Authorization check failed:", err)
+        if (isMounted) router.replace('/login')
       }
-
-      // 2. Fetch their profile to check their rank and status
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role, is_active')
-        .eq('id', session.user.id)
-        .single()
-
-      // 3. The Security Rules
-      if (!profile) {
-        router.replace('/login')
-        return
-      }
-
-      if (pathname.startsWith('/admin') && profile.role !== 'admin') {
-        // Kick non-admins out of the admin panel
-        router.replace('/todo')
-        return
-      }
-
-      if (profile.role !== 'admin' && profile.is_active === false) {
-        // Kick unpaid students to the pending page
-        router.replace('/pending')
-        return
-      }
-
-      // If they passed all checks, unlock the doors!
-      setIsAuthorized(true)
     }
 
+    // Run the check every time the pathname changes
     checkAccess()
+
+    return () => {
+      isMounted = false
+    }
   }, [router, pathname])
 
-  // NEW: Automatically close the mobile menu whenever the user clicks a link to a new page
   useEffect(() => {
     setIsMobileMenuOpen(false)
   }, [pathname])
 
-  // Show a verification screen while the bouncer checks their ID
-  if (!isAuthorized) {
+  // Show verification screen while `isAuthorized` is null
+  if (isAuthorized === null) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400 font-bold text-sm">
-        Verifying access...
+        Verifying access credentials...
       </div>
     )
   }
 
-  // They passed! Render the layout with responsive mobile sliding mechanics
+  // If false (though redirects should catch this), show nothing to prevent flashes
+  if (isAuthorized === false) return null
+
   return (
     <div className="flex min-h-screen bg-slate-50 flex-col md:flex-row relative">
       
-      {/* NEW: Mobile Header with Hamburger Button (Only visible on mobile) */}
+      {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between bg-slate-900 px-5 py-4 text-white shadow-md z-50 relative">
         <span className="font-black text-lg tracking-tight">Command Center</span>
         <button 
@@ -92,7 +106,7 @@ export default function PlatformLayout({
         </button>
       </div>
 
-      {/* NEW: Sidebar Wrapper with sliding animation (Fixed on mobile, static on desktop) */}
+      {/* Sidebar */}
       <div className={`
         fixed inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -100,15 +114,15 @@ export default function PlatformLayout({
         <Sidebar />
       </div>
 
-      {/* NEW: Dark semi-transparent overlay when menu is open on mobile */}
+      {/* Mobile Overlay */}
       {isMobileMenuOpen && (
         <div 
           className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 md:hidden"
-          onClick={() => setIsMobileMenuOpen(false)} // Closes menu if they tap outside of it
+          onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
-      {/* The actual page content (Dashboard, Admin, etc.) */}
+      {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>
