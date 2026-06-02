@@ -9,8 +9,6 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [userEmail, setUserEmail] = useState<string | null>(null)
-  
-  // NEW: State to track their true database role
   const [userRole, setUserRole] = useState<string | null>(null)
 
   useEffect(() => {
@@ -20,14 +18,20 @@ export default function Sidebar() {
       if (user) {
         setUserEmail(user.email ?? null)
         
-        // Fetch their actual role from the profiles table
-        const { data: profile } = await supabase
+        // Fetch role
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', user.id)
           .single()
           
-        if (profile) setUserRole(profile.role)
+        if (error) {
+          console.error("Sidebar failed to fetch role:", error.message)
+        }
+          
+        if (profile) {
+          setUserRole(profile.role)
+        }
       }
     }
     getUserData()
@@ -38,8 +42,8 @@ export default function Sidebar() {
     router.push('/')
   }
 
-  // Updated check: Now looks at the database role!
-  const isAdmin = userRole === 'admin'
+  // BULLETPROOF CHECK: Ignores capitalization and accidental spaces
+  const isAdmin = userRole?.trim().toLowerCase() === 'admin'
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: '📊', show: true },
@@ -54,7 +58,6 @@ export default function Sidebar() {
     { name: 'Admin Panel', path: '/admin', icon: '⚙️', show: isAdmin },
   ]
 
-  // Hide sidebar during actual quizzes and RC passages, but keep it on the launcher menus
   if (pathname.startsWith('/quiz/') || (pathname.startsWith('/editorial/') && pathname !== '/editorial')) {
     return null
   }
@@ -92,6 +95,10 @@ export default function Sidebar() {
           <p className="text-sm font-bold text-slate-300 truncate mt-1 group-hover:text-white transition-colors">
             {userEmail}
           </p>
+          {/* DEBUG BADGE: This will print exactly what the Sidebar sees! */}
+          <div className="mt-2 text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-1 rounded inline-block">
+            DB Role: [{userRole === null ? 'LOADING...' : userRole}]
+          </div>
         </Link>
 
         <button 
